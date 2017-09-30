@@ -13,6 +13,8 @@
 #include <cassert>
 #include <chrono>
 #include <immintrin.h>
+#include <mutex>
+#include <thread>
 #ifdef _OPENMP
 #include <omp.h>
 #endif

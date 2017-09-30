@@ -296,16 +296,13 @@ template <size_t kernel_k, typename postprocess_function>
 static INLINE_SPECIFIER void INLINE_ATTRIBUTE ApplyKernel(
     int8_t *&pa, uint8_t *&pb, size_t k, float fault_tolerance, float *result[], size_t length, size_t valid_lanes,
     size_t i_index, size_t j_index, float *ratio_a, float *ratio_b, float *min_b, float *kernel_sum, float *bias,
-    bool conv_relu_fusion, bool conv_bn_fusion, bool conv_bn_relu_fusion, bool conv_relu_bn_fusion, float *global_mean,
-    float *mul_variance_coeff, float *scale, float *shift, postprocess_function postprocess) {
+    postprocess_function postprocess) {
   SIMDSITYPE sum[8];
   for (size_t i = 0; i < 8; ++i) {
     sum[i] = ZEROS();
   }
   KernelReduce<kernel_k>(pa, pb, sum, k);
-  postprocess(sum, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b, min_b, kernel_sum, bias,
-              conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion, conv_relu_bn_fusion, global_mean,
-              mul_variance_coeff, scale, shift);
+  postprocess(sum, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b, min_b, kernel_sum, bias);
 }
 
 /*
@@ -351,10 +348,7 @@ template <size_t kernel_m, size_t kernel_n>
 static INLINE_SPECIFIER void INLINE_ATTRIBUTE NCHWBlockFMA(SIMDSITYPE sum[], float *result[], size_t length,
                                                            size_t valid_lanes, size_t i_index, size_t j_index,
                                                            float *ratio_a, float *ratio_b, float *min_b,
-                                                           float *kernel_sum, float *bias, bool conv_relu_fusion,
-                                                           bool conv_bn_fusion, bool conv_bn_relu_fusion,
-                                                           bool conv_relu_bn_fusion, float *global_mean,
-                                                           float *mul_variance_coeff, float *scale, float *shift) {
+                                                           float *kernel_sum, float *bias) {
   const SIMDSITYPE permute_mask = SET_EPI32(0, 0, 0, 0, 0, 0, 0, 0, 14, 12, 10, 8, 6, 4, 2, 0);
 
   sum[0] = ADD_EPI32(BSRLI_EPI128(sum[0], 4), sum[0]);
@@ -438,10 +432,7 @@ template <size_t kernel_m, size_t kernel_n>
 static INLINE_SPECIFIER void INLINE_ATTRIBUTE NHWCBlockFMA(SIMDSITYPE sum[], float *result[], size_t length,
                                                            size_t valid_lanes, size_t i_index, size_t j_index,
                                                            float *ratio_a, float *ratio_b, float *min_b,
-                                                           float *kernel_sum, float *bias, bool conv_relu_fusion,
-                                                           bool conv_bn_fusion, bool conv_bn_relu_fusion,
-                                                           bool conv_relu_bn_fusion, float *global_mean,
-                                                           float *mul_variance_coeff, float *scale, float *shift) {
+                                                           float *kernel_sum, float *bias) {
   const SIMDSITYPE permute_mask = SET_EPI32(0, 0, 0, 0, 0, 0, 0, 0, 14, 12, 10, 8, 6, 4, 2, 0);
 
   sum[0] = ADD_EPI32(BSRLI_EPI128(sum[0], 4), sum[0]);
@@ -596,10 +587,7 @@ template <size_t kernel_m, size_t kernel_n>
 static INLINE_SPECIFIER void INLINE_ATTRIBUTE FMAResult(SIMDSITYPE sum[], float *result[], size_t length,
                                                         size_t valid_lanes, size_t i_index, size_t j_index,
                                                         float *ratio_a, float *ratio_b, float *min_b, float *kernel_sum,
-                                                        float *bias, bool conv_relu_fusion, bool conv_bn_fusion,
-                                                        bool conv_bn_relu_fusion, bool conv_relu_bn_fusion,
-                                                        float *global_mean, float *mul_variance_coeff, float *scale,
-                                                        float *shift) {
+                                                        float *bias) {
   const SIMDSITYPE permute_mask = SET_EPI32(0, 0, 0, 0, 0, 0, 0, 0, 14, 12, 10, 8, 6, 4, 2, 0);
 
   sum[0] = ADD_EPI32(BSRLI_EPI128(sum[0], 4), sum[0]);
@@ -642,31 +630,26 @@ template <size_t kernel_m, size_t kernel_n, size_t kernel_k, LAYOUT layout>
 static INLINE_SPECIFIER void INLINE_ATTRIBUTE ApplyKernelWrapper(
     int8_t *&pa, uint8_t *&pb, size_t k, float fault_tolerance, float *result[], size_t length, size_t valid_lanes,
     size_t i_index, size_t j_index, float *ratio_a, float *ratio_b, float *min_b, float *kernel_sum, float *bias,
-    bool conv_relu_fusion, bool conv_bn_fusion, bool conv_bn_relu_fusion, bool conv_relu_bn_fusion, float *global_mean,
-    float *mul_variance_coeff, float *scale, float *shift, bool is_block) {
+    bool is_block) {
   assert((kernel_m == 8) && (kernel_n == 8) && (kernel_k == 8));
   if (layout == NCHW) {
     if (is_block == false) {
       ApplyKernel<kernel_k>(pa, pb, k, fault_tolerance, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b,
-                            min_b, kernel_sum, bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion,
-                            conv_relu_bn_fusion, global_mean, mul_variance_coeff, scale, shift,
+                            min_b, kernel_sum, bias,
                             FMAResult<kernel_m, kernel_n>);
     } else {
       ApplyKernel<kernel_k>(pa, pb, k, fault_tolerance, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b,
-                            min_b, kernel_sum, bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion,
-                            conv_relu_bn_fusion, global_mean, mul_variance_coeff, scale, shift,
+                            min_b, kernel_sum, bias,
                             NCHWBlockFMA<kernel_m, kernel_n>);
     }
   } else {
     if (is_block == false) {
       ApplyKernel<kernel_k>(pa, pb, k, fault_tolerance, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b,
-                            min_b, kernel_sum, bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion,
-                            conv_relu_bn_fusion, global_mean, mul_variance_coeff, scale, shift,
+                            min_b, kernel_sum, bias,
                             FMAResult<kernel_m, kernel_n>);
     } else {
       ApplyKernel<kernel_k>(pa, pb, k, fault_tolerance, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b,
-                            min_b, kernel_sum, bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion,
-                            conv_relu_bn_fusion, global_mean, mul_variance_coeff, scale, shift,
+                            min_b, kernel_sum, bias,
                             NHWCBlockFMA<kernel_m, kernel_n>);
     }
   }

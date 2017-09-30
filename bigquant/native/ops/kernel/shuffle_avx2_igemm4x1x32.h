@@ -90,8 +90,7 @@ template <size_t kernel_k, typename kernel_function, typename sum_function, type
 static INLINE_SPECIFIER void INLINE_ATTRIBUTE
 ApplyStreamKernel(int8_t *&pa, uint8_t *&pb, size_t k, float fault_tolerance, float *result[], size_t length,
                   size_t valid_lanes, size_t i_index, size_t j_index, float *ratio_a, float *ratio_b, float *min_b,
-                  float *kernel_sum, float *bias, bool conv_relu_fusion, bool conv_bn_fusion, bool conv_bn_relu_fusion,
-                  bool conv_relu_bn_fusion, float *global_mean, float *mul_variance_coeff, float *scale, float *shift,
+                  float *kernel_sum, float *bias,
                   kernel_function kernel, sum_function sum, postprocess_function postprocess) {
   SIMDSITYPEHALF accumulator;
   INIT(c1);
@@ -112,9 +111,7 @@ ApplyStreamKernel(int8_t *&pa, uint8_t *&pb, size_t k, float fault_tolerance, fl
   }
   sum(c1, c2, c3, c4, sum1, sum2, sum3, sum4);
   PostReduce(sum1, sum2, sum3, sum4, accumulator);
-  postprocess(accumulator, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b, min_b, kernel_sum, bias,
-              conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion, conv_relu_bn_fusion, global_mean,
-              mul_variance_coeff, scale, shift);
+  postprocess(accumulator, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b, min_b, kernel_sum, bias);
 }
 
 static INLINE_SPECIFIER void INLINE_ATTRIBUTE CommitResult(SIMDSITYPEHALF &accumulator, void *result[], size_t length,
@@ -139,9 +136,7 @@ static INLINE_SPECIFIER void INLINE_ATTRIBUTE CommitResult(SIMDSITYPEHALF &accum
 template <size_t kernel_m, size_t kernel_n>
 static INLINE_SPECIFIER void INLINE_ATTRIBUTE
 StreamFMAResult(SIMDSITYPEHALF &accumulator, float *result[], size_t length, size_t valid_lanes, size_t i_index,
-                size_t j_index, float *ratio_a, float *ratio_b, float *min_b, float *kernel_sum, float *bias,
-                bool conv_relu_fusion, bool conv_bn_fusion, bool conv_bn_relu_fusion, bool conv_relu_bn_fusion,
-                float *global_mean, float *mul_variance_coeff, float *scale, float *shift) {
+                size_t j_index, float *ratio_a, float *ratio_b, float *min_b, float *kernel_sum, float *bias) {
   int *tmp = reinterpret_cast<int *>(&accumulator);
   for (size_t m = 0; m < length; ++m) {
     *(reinterpret_cast<float *>(result[m])) =
@@ -167,13 +162,11 @@ template <size_t kernel_m, size_t kernel_n, size_t kernel_k, LAYOUT layout>
 static INLINE_SPECIFIER void INLINE_ATTRIBUTE ApplyKernelWrapper(
     int8_t *&pa, uint8_t *&pb, size_t k, float fault_tolerance, float *result[], size_t length, size_t valid_lanes,
     size_t i_index, size_t j_index, float *ratio_a, float *ratio_b, float *min_b, float *kernel_sum, float *bias,
-    bool conv_relu_fusion, bool conv_bn_fusion, bool conv_bn_relu_fusion, bool conv_relu_bn_fusion, float *global_mean,
-    float *mul_variance_coeff, float *scale, float *shift, bool is_block) {
+    bool is_block) {
   assert((kernel_m == 4) && (kernel_n == 1) && (kernel_k == 32));
   ApplyStreamKernel<kernel_k>(pa, pb, k, fault_tolerance, result, std::min(length, kernel_m),
                               std::min(valid_lanes, kernel_n), i_index, j_index, ratio_a, ratio_b, min_b, kernel_sum,
-                              bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion, conv_relu_bn_fusion,
-                              global_mean, mul_variance_coeff, scale, shift, Kernel4x1x32, Reduce,
+                              bias, Kernel4x1x32, Reduce,
                               StreamFMAResult<kernel_m, kernel_n>);
 }
 

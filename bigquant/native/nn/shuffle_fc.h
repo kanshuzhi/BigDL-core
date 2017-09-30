@@ -50,13 +50,13 @@ struct ShuffleFCAlgo : public BaseFCAlgo {
           quantized_kernel_->data_, quantized_data_->data_, out, aligned_fc_m_, aligned_fc_n_, aligned_fc_k_,
           quantized_kernel_->ratio_.data_, quantized_data_->ratio_.data_, sum_per_channel_out_->data_,
           quantized_data_->min_.data_, bias, fc_data_desc.batch_size_, 1, fc_kernel_desc.channel_out_, 0, 1, 1, 0.5,
-          aligned_fc_m_ - fc_m_, aligned_fc_n_ - fc_n_, false);
+          aligned_fc_m_ - fc_m_, aligned_fc_n_ - fc_n_);
     } else {
       shuffle::ConvShuffleGEMM<FC_SHUFFLE_KERNEL_M, FC_SHUFFLE_KERNEL_N, FC_SHUFFLE_KERNEL_K, NHWC>(
           quantized_kernel_->data_, quantized_data_->data_, out, aligned_fc_m_, aligned_fc_n_, aligned_fc_k_,
           quantized_kernel_->ratio_.data_, quantized_data_->ratio_.data_, sum_per_channel_out_->data_,
           quantized_data_->min_.data_, bias, fc_data_desc.batch_size_, 1, fc_kernel_desc.channel_out_, 0, 1, 1, 0.5,
-          aligned_fc_m_ - fc_m_, aligned_fc_n_ - fc_n_, false);
+          aligned_fc_m_ - fc_m_, aligned_fc_n_ - fc_n_);
     }
     delete quantized_data_;
     quantized_data_ = NULL;

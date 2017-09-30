@@ -205,8 +205,7 @@ template <size_t kernel_k, typename kernel_function, typename reduce_function, t
 static INLINE_SPECIFIER void INLINE_ATTRIBUTE
 ApplyKernel(int8_t *&pa, uint8_t *&pb, size_t k, float fault_tolerance, float *result[], size_t length,
             size_t valid_lanes, size_t i_index, size_t j_index, float *ratio_a, float *ratio_b, float *min_b,
-            float *kernel_sum, float *bias, bool conv_relu_fusion, bool conv_bn_fusion, bool conv_bn_relu_fusion,
-            bool conv_relu_bn_fusion, float *global_mean, float *mul_variance_coeff, float *scale, float *shift,
+            float *kernel_sum, float *bias,
             kernel_function kernel, reduce_function reduce, postprocess_function postprocess) {
   INIT(c00);
   INIT(c01);
@@ -244,8 +243,7 @@ ApplyKernel(int8_t *&pa, uint8_t *&pb, size_t k, float fault_tolerance, float *r
   reduce(c00, c01, c02, c03, c10, c11, c12, c13, c20, c21, c22, c23, c30, c31, c32, c33, sum00, sum01, sum10, sum11,
          sum20, sum21, sum30, sum31);
   postprocess(sum00, sum01, sum10, sum11, sum20, sum21, sum30, sum31, result, length, valid_lanes, i_index, j_index,
-              ratio_a, ratio_b, min_b, kernel_sum, bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion,
-              conv_relu_bn_fusion, global_mean, mul_variance_coeff, scale, shift);
+              ratio_a, ratio_b, min_b, kernel_sum, bias);
 }
 /*
 
@@ -283,9 +281,7 @@ template <size_t kernel_m, size_t kernel_n>
 static INLINE_SPECIFIER void INLINE_ATTRIBUTE
 FMAResult(SIMDSITYPE &sum00, SIMDSITYPE &sum01, SIMDSITYPE &sum10, SIMDSITYPE &sum11, SIMDSITYPE &sum20,
           SIMDSITYPE &sum21, SIMDSITYPE &sum30, SIMDSITYPE &sum31, float *result[], size_t length, size_t valid_lanes,
-          size_t i_index, size_t j_index, float *ratio_a, float *ratio_b, float *min_b, float *kernel_sum, float *bias,
-          bool conv_relu_fusion, bool conv_bn_fusion, bool conv_bn_relu_fusion, bool conv_relu_bn_fusion,
-          float *global_mean, float *mul_variance_coeff, float *scale, float *shift) {
+          size_t i_index, size_t j_index, float *ratio_a, float *ratio_b, float *min_b, float *kernel_sum, float *bias) {
   const static uint16_t high_mask = 0xFF00;
   const static uint16_t low_mask = 0x00FF;
   SIMDSITYPE accumulator = SET_EPI32(MASK_REDUCEADD_EPI32(high_mask, sum31), MASK_REDUCEADD_EPI32(low_mask, sum31),
@@ -324,18 +320,15 @@ template <size_t kernel_m, size_t kernel_n, size_t kernel_k, LAYOUT layout>
 static INLINE_SPECIFIER void INLINE_ATTRIBUTE ApplyKernelWrapper(
     int8_t *&pa, uint8_t *&pb, size_t k, float fault_tolerance, float *result[], size_t length, size_t valid_lanes,
     size_t i_index, size_t j_index, float *ratio_a, float *ratio_b, float *min_b, float *kernel_sum, float *bias,
-    bool conv_relu_fusion, bool conv_bn_fusion, bool conv_bn_relu_fusion, bool conv_relu_bn_fusion, float *global_mean,
-    float *mul_variance_coeff, float *scale, float *shift, bool is_block) {
+    bool is_block) {
   assert((kernel_m == 4) && (kernel_n == 4) && (kernel_k == 64));
   if (layout == NCHW) {
     ApplyKernel<kernel_k>(pa, pb, k, fault_tolerance, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b,
-                          min_b, kernel_sum, bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion,
-                          conv_relu_bn_fusion, global_mean, mul_variance_coeff, scale, shift,
+                          min_b, kernel_sum, bias,
                           AVX512Kernel4x4x64<kernel_m, kernel_n, kernel_k>, Reduce, FMAResult<kernel_m, kernel_n>);
   } else {
     ApplyKernel<kernel_k>(pa, pb, k, fault_tolerance, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b,
-                          min_b, kernel_sum, bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion,
-                          conv_relu_bn_fusion, global_mean, mul_variance_coeff, scale, shift,
+                          min_b, kernel_sum, bias,
                           AVX512Kernel4x4x64<kernel_m, kernel_n, kernel_k>, Reduce, FMAResult<kernel_m, kernel_n>);
   }
 }

@@ -82,10 +82,7 @@ template <size_t kernel_m, size_t kernel_n, size_t kernel_k, LAYOUT layout>
 void ConvShuffleGEMM(int8_t *pa, uint8_t *pb, float *pc, size_t m, size_t n, size_t k, float *ratio_a, float *ratio_b,
                      float *kernel_sum, float *min_b, float *bias, size_t batch_size, size_t groups,
                      size_t channel_per_group, size_t cur_group, size_t height_out, size_t width_out,
-                     float fault_tolerance = 0.5, size_t pad_m = 0, size_t pad_n = 0, bool conv_relu_fusion = false,
-                     bool conv_bn_fusion = false, bool conv_bn_relu_fusion = false, bool conv_relu_bn_fusion = false,
-                     float *global_mean = NULL, float *mul_variance_coeff = NULL, float *scale = NULL,
-                     float *shift = NULL);
+                     float fault_tolerance = 0.5, size_t pad_m = 0, size_t pad_n = 0);
 }
 
 namespace dot {

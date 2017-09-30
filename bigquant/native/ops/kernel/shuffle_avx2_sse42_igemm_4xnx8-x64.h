@@ -233,8 +233,7 @@ template <size_t kernel_m, size_t kernel_n>
 static INLINE_SPECIFIER void INLINE_ATTRIBUTE NCHWFMABlockResult(
     SIMDSITYPE &sum1, SIMDSITYPE &sum2, SIMDSITYPE &sum3, SIMDSITYPE &sum4, float *result[], size_t length,
     size_t valid_lanes, size_t i_index, size_t j_index, float *ratio_a, float *ratio_b, float *min_b, float *kernel_sum,
-    float *bias, bool conv_relu_fusion, bool conv_bn_fusion, bool conv_bn_relu_fusion, bool conv_relu_bn_fusion,
-    float *global_mean, float *mul_variance_coeff, float *scale, float *shift) {
+    float *bias) {
   SIMDPSTYPE result1, result2, result3, result4;
   SIMDPSTYPE bias1, bias2, bias3, bias4;
   SIMDPSTYPE simd_ratio_b = LOADU_PS(ratio_b + j_index);
@@ -268,8 +267,7 @@ template <size_t kernel_m, size_t kernel_n>
 static INLINE_SPECIFIER void INLINE_ATTRIBUTE NHWCFMABlockResult(
     SIMDSITYPE &sum1, SIMDSITYPE &sum2, SIMDSITYPE &sum3, SIMDSITYPE &sum4, float *result[], size_t length,
     size_t valid_lanes, size_t i_index, size_t j_index, float *ratio_a, float *ratio_b, float *min_b, float *kernel_sum,
-    float *bias, bool conv_relu_fusion, bool conv_bn_fusion, bool conv_bn_relu_fusion, bool conv_relu_bn_fusion,
-    float *global_mean, float *mul_variance_coeff, float *scale, float *shift) {
+    float *bias) {
   const static SIMDPSTYPE zero = ZERO_PS();
   SIMDPSTYPE bias1, bias2, bias3, bias4;
   SIMDPSTYPE simd_ratio_b = LOADU_PS(ratio_b + j_index);
@@ -301,40 +299,6 @@ static INLINE_SPECIFIER void INLINE_ATTRIBUTE NHWCFMABlockResult(
   result2 = FMA_PS(EPI32TOPS(sum2), coeffi2, bias2);  // b1,...b8
   result3 = FMA_PS(EPI32TOPS(sum3), coeffi3, bias3);  // c1,...c8
   result4 = FMA_PS(EPI32TOPS(sum4), coeffi4, bias4);  // d1,...d8
-  if (conv_relu_fusion) {                             // conv + relu
-    PRELU(result1, zero);
-    PRELU(result2, zero);
-    PRELU(result3, zero);
-    PRELU(result4, zero);
-  } else if (conv_bn_fusion) {  // conv + bn
-    SIMDPSTYPE global_mean1 = SET1_PS(global_mean[i_index]);
-    SIMDPSTYPE global_mean2 = SET1_PS(global_mean[i_index + 1]);
-    SIMDPSTYPE global_mean3 = SET1_PS(global_mean[i_index + 2]);
-    SIMDPSTYPE global_mean4 = SET1_PS(global_mean[i_index + 3]);
-    SIMDPSTYPE mul_variance_coeff1 = SET1_PS(mul_variance_coeff[i_index]);
-    SIMDPSTYPE mul_variance_coeff2 = SET1_PS(mul_variance_coeff[i_index + 1]);
-    SIMDPSTYPE mul_variance_coeff3 = SET1_PS(mul_variance_coeff[i_index + 2]);
-    SIMDPSTYPE mul_variance_coeff4 = SET1_PS(mul_variance_coeff[i_index + 3]);
-    SIMDPSTYPE scale1 = SET1_PS((scale == NULL) ? 1.0f : scale[i_index]);
-    SIMDPSTYPE scale2 = SET1_PS((scale == NULL) ? 1.0f : scale[i_index + 1]);
-    SIMDPSTYPE scale3 = SET1_PS((scale == NULL) ? 1.0f : scale[i_index + 2]);
-    SIMDPSTYPE scale4 = SET1_PS((scale == NULL) ? 1.0f : scale[i_index + 3]);
-    SIMDPSTYPE shift1 = SET1_PS((shift == NULL) ? 0.0f : shift[i_index]);
-    SIMDPSTYPE shift2 = SET1_PS((shift == NULL) ? 0.0f : shift[i_index + 1]);
-    SIMDPSTYPE shift3 = SET1_PS((shift == NULL) ? 0.0f : shift[i_index + 2]);
-    SIMDPSTYPE shift4 = SET1_PS((shift == NULL) ? 0.0f : shift[i_index + 3]);
-    BN(result1, global_mean1, mul_variance_coeff1, scale1, scale1);
-    BN(result2, global_mean2, mul_variance_coeff2, scale2, scale2);
-    BN(result3, global_mean3, mul_variance_coeff3, scale3, scale3);
-    BN(result4, global_mean4, mul_variance_coeff4, scale4, scale4);
-  } else if (conv_bn_relu_fusion) {  // conv + bn + relu
-
-  } else if (conv_relu_bn_fusion) {  // conv + relu + fusion
-    PRELU(result1, zero);
-    PRELU(result2, zero);
-    PRELU(result3, zero);
-    PRELU(result4, zero);
-  }
   // AVX2	SSE4_2
   // a1,b1,a2,b2,a5,b5,a6,b6;	a1,b1,a2,b2
   // a3,b3,a4,b4,a7,b7,a8,b8; a3,b3,a3,b4
@@ -396,8 +360,7 @@ template <size_t kernel_m, size_t kernel_n>
 static INLINE_SPECIFIER void INLINE_ATTRIBUTE
 FMAResult(SIMDSITYPE &sum1, SIMDSITYPE &sum2, SIMDSITYPE &sum3, SIMDSITYPE &sum4, float *result[], size_t length,
           size_t valid_lanes, size_t i_index, size_t j_index, float *ratio_a, float *ratio_b, float *min_b,
-          float *kernel_sum, float *bias, bool conv_relu_fusion, bool conv_bn_fusion, bool conv_bn_relu_fusion,
-          bool conv_relu_bn_fusion, float *global_mean, float *mul_variance_coeff, float *scale, float *shift) {
+          float *kernel_sum, float *bias) {
   float bias1, bias2, bias3, bias4;
   if (bias != NULL) {
     bias1 = bias[i_index];
@@ -442,22 +405,6 @@ FMAResult(SIMDSITYPE &sum1, SIMDSITYPE &sum2, SIMDSITYPE &sum3, SIMDSITYPE &sum4
       *(result[0 * kernel_n + ky]) = ratio_a[i_index] * ratio_b[j_index + ky] * EXTRACT_EPI32_HALF(tmp1, 0) +
                                      kernel_sum[i_index] * min_b[j_index + ky] + bias1;
     }
-    for (size_t l = 0; l < length; ++l) {
-      if (conv_relu_fusion) {
-        *(result[l * kernel_n + ky]) = fmaxf(*(result[l * kernel_n + ky]), 0.0f);
-      } else if (conv_bn_fusion) {
-        ScalarBN((*result[l * kernel_n + ky]), global_mean[i_index + l], mul_variance_coeff[i_index + l],
-                 (scale == NULL) ? 1.0f : scale[i_index + l], (shift == NULL) ? 0.0f : shift[i_index + l]);
-      } else if (conv_bn_relu_fusion) {
-        ScalarBN((*result[l * kernel_n + ky]), global_mean[i_index + l], mul_variance_coeff[i_index + l],
-                 (scale == NULL) ? 1.0f : scale[i_index + l], (shift == NULL) ? 0.0f : shift[i_index + l]);
-        *(result[l * kernel_n + ky]) = fmaxf(*(result[l * kernel_n + ky]), 0.0f);
-      } else if (conv_relu_bn_fusion) {
-        *(result[l * kernel_n + ky]) = fmaxf(*(result[l * kernel_n + ky]), 0.0f);
-        ScalarBN((*result[l * kernel_n + ky]), global_mean[i_index + l], mul_variance_coeff[i_index + l],
-                 (scale == NULL) ? 1.0f : scale[i_index + l], (shift == NULL) ? 0.0f : shift[i_index + l]);
-      }
-    }
     if (ky == 3) {
       tmp1 = EXTRACT_SI128(sum1, 1);
       tmp2 = EXTRACT_SI128(sum2, 1);
@@ -472,68 +419,30 @@ FMAResult(SIMDSITYPE &sum1, SIMDSITYPE &sum2, SIMDSITYPE &sum3, SIMDSITYPE &sum4
   }
 #else
   for (size_t ky = 0; ky < valid_lanes; ++ky) {
-    if (conv_relu_fusion) {
-      if (length == 4) {
-        *(result[0 * kernel_n + ky]) = fmaxf(ratio_a[i_index] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum1, 0) +
-                                                 kernel_sum[i_index] * min_b[j_index + ky] + bias1,
-                                             0.0f);
-        *(result[1 * kernel_n + ky]) = fmaxf(ratio_a[i_index + 1] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum2, 0) +
-                                                 kernel_sum[i_index + 1] * min_b[j_index + ky] + bias2,
-                                             0.0f);
-        *(result[2 * kernel_n + ky]) = fmaxf(ratio_a[i_index + 2] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum3, 0) +
-                                                 kernel_sum[i_index + 2] * min_b[j_index + ky] + bias3,
-                                             0.0f);
-        *(result[3 * kernel_n + ky]) = fmaxf(ratio_a[i_index + 3] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum4, 0) +
-                                                 kernel_sum[i_index + 3] * min_b[j_index + ky] + bias4,
-                                             0.0f);
-      } else if (length == 3) {
-        *(result[0 * kernel_n + ky]) = fmaxf(ratio_a[i_index] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum1, 0) +
-                                                 kernel_sum[i_index] * min_b[j_index + ky] + bias1,
-                                             0.0f);
-        *(result[1 * kernel_n + ky]) = fmaxf(ratio_a[i_index + 1] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum2, 0) +
-                                                 kernel_sum[i_index + 1] * min_b[j_index + ky] + bias2,
-                                             0.0f);
-        *(result[2 * kernel_n + ky]) = fmaxf(ratio_a[i_index + 2] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum3, 0) +
-                                                 kernel_sum[i_index + 2] * min_b[j_index + ky] + bias3,
-                                             0.0f);
-      } else if (length == 2) {
-        *(result[0 * kernel_n + ky]) = fmaxf(ratio_a[i_index] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum1, 0) +
-                                                 kernel_sum[i_index] * min_b[j_index + ky] + bias1,
-                                             0.0f);
-        *(result[1 * kernel_n + ky]) = fmaxf(ratio_a[i_index + 1] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum2, 0) +
-                                                 kernel_sum[i_index + 1] * min_b[j_index + ky] + bias2,
-                                             0.0f);
-      } else {
-        *(result[0 * kernel_n + ky]) = fmaxf(ratio_a[i_index] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum1, 0) +
-                                                 kernel_sum[i_index] * min_b[j_index + ky] + bias1,
-                                             0.0f);
-      }
+    if (length == 4) {
+      *(result[0 * kernel_n + ky]) = ratio_a[i_index] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum1, 0) +
+                                     kernel_sum[i_index] * min_b[j_index + ky] + bias1;
+      *(result[1 * kernel_n + ky]) = ratio_a[i_index + 1] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum2, 0) +
+                                     kernel_sum[i_index + 1] * min_b[j_index + ky] + bias2;
+      *(result[2 * kernel_n + ky]) = ratio_a[i_index + 2] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum3, 0) +
+                                     kernel_sum[i_index + 2] * min_b[j_index + ky] + bias3;
+      *(result[3 * kernel_n + ky]) = ratio_a[i_index + 3] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum4, 0) +
+                                     kernel_sum[i_index + 3] * min_b[j_index + ky] + bias4;
+    } else if (length == 3) {
+      *(result[0 * kernel_n + ky]) = ratio_a[i_index] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum1, 0) +
+                                     kernel_sum[i_index] * min_b[j_index + ky] + bias1;
+      *(result[1 * kernel_n + ky]) = ratio_a[i_index + 1] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum2, 0) +
+                                     kernel_sum[i_index + 1] * min_b[j_index + ky] + bias2;
+      *(result[2 * kernel_n + ky]) = ratio_a[i_index + 2] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum3, 0) +
+                                     kernel_sum[i_index + 2] * min_b[j_index + ky] + bias3;
+    } else if (length == 2) {
+      *(result[0 * kernel_n + ky]) = ratio_a[i_index] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum1, 0) +
+                                     kernel_sum[i_index] * min_b[j_index + ky] + bias1;
+      *(result[1 * kernel_n + ky]) = ratio_a[i_index + 1] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum2, 0) +
+                                     kernel_sum[i_index + 1] * min_b[j_index + ky] + bias2;
     } else {
-      if (length == 4) {
-        *(result[0 * kernel_n + ky]) = ratio_a[i_index] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum1, 0) +
-                                       kernel_sum[i_index] * min_b[j_index + ky] + bias1;
-        *(result[1 * kernel_n + ky]) = ratio_a[i_index + 1] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum2, 0) +
-                                       kernel_sum[i_index + 1] * min_b[j_index + ky] + bias2;
-        *(result[2 * kernel_n + ky]) = ratio_a[i_index + 2] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum3, 0) +
-                                       kernel_sum[i_index + 2] * min_b[j_index + ky] + bias3;
-        *(result[3 * kernel_n + ky]) = ratio_a[i_index + 3] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum4, 0) +
-                                       kernel_sum[i_index + 3] * min_b[j_index + ky] + bias4;
-      } else if (length == 3) {
-        *(result[0 * kernel_n + ky]) = ratio_a[i_index] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum1, 0) +
-                                       kernel_sum[i_index] * min_b[j_index + ky] + bias1;
-        *(result[1 * kernel_n + ky]) = ratio_a[i_index + 1] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum2, 0) +
-                                       kernel_sum[i_index + 1] * min_b[j_index + ky] + bias2;
-        *(result[2 * kernel_n + ky]) = ratio_a[i_index + 2] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum3, 0) +
-                                       kernel_sum[i_index + 2] * min_b[j_index + ky] + bias3;
-      } else if (length == 2) {
-        *(result[0 * kernel_n + ky]) = ratio_a[i_index] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum1, 0) +
-                                       kernel_sum[i_index] * min_b[j_index + ky] + bias1;
-        *(result[1 * kernel_n + ky]) = ratio_a[i_index + 1] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum2, 0) +
-                                       kernel_sum[i_index + 1] * min_b[j_index + ky] + bias2;
-      } else {
-        *(result[0 * kernel_n + ky]) = ratio_a[i_index] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum1, 0) +
-                                       kernel_sum[i_index] * min_b[j_index + ky] + bias1;
-      }
+      *(result[0 * kernel_n + ky]) = ratio_a[i_index] * ratio_b[j_index + ky] * EXTRACT_EPI32(sum1, 0) +
+                                     kernel_sum[i_index] * min_b[j_index + ky] + bias1;
     }
     sum1 = SRLI_SI128(sum1, 4);
     sum2 = SRLI_SI128(sum2, 4);
@@ -582,8 +491,7 @@ template <size_t kernel_k, typename kernel_function, typename sum_function, type
 static INLINE_SPECIFIER void INLINE_ATTRIBUTE
 ApplyKernel(int8_t *&pa, uint8_t *&pb, size_t k, float fault_tolerance, float *result[], size_t length,
             size_t valid_lanes, size_t i_index, size_t j_index, float *ratio_a, float *ratio_b, float *min_b,
-            float *kernel_sum, float *bias, bool conv_relu_fusion, bool conv_bn_fusion, bool conv_bn_relu_fusion,
-            bool conv_relu_bn_fusion, float *global_mean, float *mul_variance_coeff, float *scale, float *shift,
+            float *kernel_sum, float *bias,
             kernel_function kernel, sum_function sum, reduce_function reduce, postprocess_function postprocess) {
   SIMDSITYPE ones = SET1_EPI16(1);
   SIMDPSTYPE zero = ZERO_PS();
@@ -612,8 +520,7 @@ ApplyKernel(int8_t *&pa, uint8_t *&pb, size_t k, float fault_tolerance, float *r
   }
   reduce(c11, c12, c21, c22, c31, c32, c41, c42, sum1, sum2, sum3, sum4);
   postprocess(sum1, sum2, sum3, sum4, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b, min_b,
-              kernel_sum, bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion, conv_relu_bn_fusion, global_mean,
-              mul_variance_coeff, scale, shift);
+              kernel_sum, bias);
 }
 
 template <size_t kernel_m, size_t kernel_n, size_t kernel_k>
@@ -645,32 +552,27 @@ template <size_t kernel_m, size_t kernel_n, size_t kernel_k, LAYOUT layout>
 static INLINE_SPECIFIER void INLINE_ATTRIBUTE ApplyKernelWrapper(
     int8_t *&pa, uint8_t *&pb, size_t k, float fault_tolerance, float *result[], size_t length, size_t valid_lanes,
     size_t i_index, size_t j_index, float *ratio_a, float *ratio_b, float *min_b, float *kernel_sum, float *bias,
-    bool conv_relu_fusion, bool conv_bn_fusion, bool conv_bn_relu_fusion, bool conv_relu_bn_fusion, float *global_mean,
-    float *mul_variance_coeff, float *scale, float *shift, bool is_block) {
+    bool is_block) {
 #ifdef __AVX2__
   assert((kernel_m == 4) && (kernel_n == 8) && (kernel_k == 8));
   if (layout == NCHW) {
     if (is_block) {
       ApplyKernel<kernel_k>(pa, pb, k, fault_tolerance, result, kernel_m, kernel_n, i_index, j_index, ratio_a, ratio_b,
-                            min_b, kernel_sum, bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion,
-                            conv_relu_bn_fusion, global_mean, mul_variance_coeff, scale, shift, AVX2Kernel4x8x8,
+                            min_b, kernel_sum, bias, AVX2Kernel4x8x8,
                             HaddPairReduce, PostHaddReduce, NCHWFMABlockResult<kernel_m, kernel_n>);
     } else {
       ApplyKernel<kernel_k>(pa, pb, k, fault_tolerance, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b,
-                            min_b, kernel_sum, bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion,
-                            conv_relu_bn_fusion, global_mean, mul_variance_coeff, scale, shift, AVX2Kernel4x8x8,
+                            min_b, kernel_sum, bias, AVX2Kernel4x8x8,
                             HaddPairReduce, PostHaddReduce, FMAResult<kernel_m, kernel_n>);
     }
   } else {
     if (is_block) {
       ApplyKernel<kernel_k>(pa, pb, k, fault_tolerance, result, kernel_m, kernel_n, i_index, j_index, ratio_a, ratio_b,
-                            min_b, kernel_sum, bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion,
-                            conv_relu_bn_fusion, global_mean, mul_variance_coeff, scale, shift, AVX2Kernel4x8x8,
+                            min_b, kernel_sum, bias, AVX2Kernel4x8x8,
                             HaddPairReduce, PostHaddReduce, NHWCFMABlockResult<kernel_m, kernel_n>);
     } else {
       ApplyKernel<kernel_k>(pa, pb, k, fault_tolerance, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b,
-                            min_b, kernel_sum, bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion,
-                            conv_relu_bn_fusion, global_mean, mul_variance_coeff, scale, shift, AVX2Kernel4x8x8,
+                            min_b, kernel_sum, bias, AVX2Kernel4x8x8,
                             HaddPairReduce, PostHaddReduce, FMAResult<kernel_m, kernel_n>);
     }
   }
@@ -679,25 +581,21 @@ static INLINE_SPECIFIER void INLINE_ATTRIBUTE ApplyKernelWrapper(
   if (layout == NCHW) {
     if (is_block) {
       ApplyKernel<kernel_k>(pa, pb, k, fault_tolerance, result, kernel_m, kernel_n, i_index, j_index, ratio_a, ratio_b,
-                            min_b, kernel_sum, bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion,
-                            conv_relu_bn_fusion, global_mean, mul_variance_coeff, scale, shift, SSE42Kernel4x4x8,
+                            min_b, kernel_sum, bias, SSE42Kernel4x4x8,
                             HaddPairReduce, PostHaddReduce, NCHWFMABlockResult<kernel_m, kernel_n>);
     } else {
       ApplyKernel<kernel_k>(pa, pb, k, fault_tolerance, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b,
-                            min_b, kernel_sum, bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion,
-                            conv_relu_bn_fusion, global_mean, mul_variance_coeff, scale, shift, SSE42Kernel4x4x8,
+                            min_b, kernel_sum, bias, SSE42Kernel4x4x8,
                             HaddPairReduce, PostHaddReduce, FMAResult<kernel_m, kernel_n>);
     }
   } else {
     if (is_block) {
       ApplyKernel<kernel_k>(pa, pb, k, fault_tolerance, result, kernel_m, kernel_n, i_index, j_index, ratio_a, ratio_b,
-                            min_b, kernel_sum, bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion,
-                            conv_relu_bn_fusion, global_mean, mul_variance_coeff, scale, shift, SSE42Kernel4x4x8,
+                            min_b, kernel_sum, bias, SSE42Kernel4x4x8,
                             HaddPairReduce, PostHaddReduce, NHWCFMABlockResult<kernel_m, kernel_n>);
     } else {
       ApplyKernel<kernel_k>(pa, pb, k, fault_tolerance, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b,
-                            min_b, kernel_sum, bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion,
-                            conv_relu_bn_fusion, global_mean, mul_variance_coeff, scale, shift, SSE42Kernel4x4x8,
+                            min_b, kernel_sum, bias, SSE42Kernel4x4x8,
                             HaddPairReduce, PostHaddReduce, FMAResult<kernel_m, kernel_n>);
     }
   }

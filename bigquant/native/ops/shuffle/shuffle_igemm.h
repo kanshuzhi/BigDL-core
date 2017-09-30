@@ -104,27 +104,23 @@ template <size_t kernel_m, size_t kernel_n, size_t kernel_k, LAYOUT layout>
 static INLINE_SPECIFIER void INLINE_ATTRIBUTE QuantizedGemmSelect(
     int8_t *&pa, uint8_t *&pb, size_t k, float fault_tolerance, float *result[], size_t length, size_t valid_lanes,
     size_t i_index, size_t j_index, float *ratio_a, float *ratio_b, float *min_b, float *kernel_sum, float *bias,
-    bool conv_relu_fusion, bool conv_bn_fusion, bool conv_bn_relu_fusion, bool conv_relu_bn_fusion, float *global_mean,
-    float *mul_variance_coeff, float *scale, float *shift, bool is_block) {
+    bool is_block) {
 #if defined(AVX512)
   if ((kernel_m == 8) && (kernel_n == 8) && (kernel_k == 8)) {
     kernel::avx512_igemm8x8x8::ApplyKernelWrapper<kernel_m, kernel_n, kernel_k, layout>(
         pa, pb, k, fault_tolerance, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b, min_b, kernel_sum,
-        bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion, conv_relu_bn_fusion, global_mean,
-        mul_variance_coeff, scale, shift, is_block);
+        bias, is_block);
   }
 #elif defined(__AVX2__)
   if ((kernel_m == 4) && (kernel_n == 8) && (kernel_k == 8)) {
     kernel::igemm4xn::ApplyKernelWrapper<kernel_m, kernel_n, kernel_k, layout>(
         pa, pb, k, fault_tolerance, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b, min_b, kernel_sum,
-        bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion, conv_relu_bn_fusion, global_mean,
-        mul_variance_coeff, scale, shift, is_block);
+        bias, is_block);
   }
   if ((kernel_m == 4) && (kernel_n == 1) && (kernel_k == 32)) {
     kernel::igemm4x1::ApplyKernelWrapper<kernel_m, kernel_n, kernel_k, layout>(
         pa, pb, k, fault_tolerance, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b, min_b, kernel_sum,
-        bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion, conv_relu_bn_fusion, global_mean,
-        mul_variance_coeff, scale, shift, is_block);
+        bias, is_block);
   }
 #else
   /*
@@ -132,17 +128,13 @@ static INLINE_SPECIFIER void INLINE_ATTRIBUTE QuantizedGemmSelect(
     kernel::igemm4xn::ApplyKernelWrapper<kernel_m, kernel_n, kernel_k, layout>(pa, pb, k, fault_tolerance, result,
   length, valid_lanes, i_index, j_index,
                                                                         ratio_a, ratio_b, min_b, kernel_sum, bias,
-                                                                        conv_relu_fusion, conv_bn_fusion,
-  conv_bn_relu_fusion, conv_relu_bn_fusion,
-                                                                        global_mean, mul_variance_coeff, scale, shift,
                                                                         is_block);
   }
   */
   if ((kernel_m == 2) && (kernel_n == 2) && (kernel_k == 16)) {
     kernel::sse42_igemm2x2x16::ApplyKernelWrapper<kernel_m, kernel_n, kernel_k, layout>(
         pa, pb, k, fault_tolerance, result, length, valid_lanes, i_index, j_index, ratio_a, ratio_b, min_b, kernel_sum,
-        bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion, conv_relu_bn_fusion, global_mean,
-        mul_variance_coeff, scale, shift, is_block);
+        bias, is_block);
   }
 #endif
 }
@@ -224,9 +216,7 @@ template <size_t kernel_m, size_t kernel_n, size_t kernel_k, LAYOUT layout>
 void ConvShuffleGEMM(int8_t *pa, uint8_t *pb, float *pc, size_t m, size_t n, size_t k, float *ratio_a, float *ratio_b,
                      float *kernel_sum, float *min_b, float *bias, size_t batch_size, size_t groups,
                      size_t channel_per_group, size_t cur_group, size_t height_out, size_t width_out,
-                     float fault_tolerance, size_t pad_m, size_t pad_n, bool conv_relu_fusion, bool conv_bn_fusion,
-                     bool conv_bn_relu_fusion, bool conv_relu_bn_fusion, float *global_mean, float *mul_variance_coeff,
-                     float *scale, float *shift) {
+                     float fault_tolerance, size_t pad_m, size_t pad_n) {
 #ifdef TIME_PROFILE
   auto start = std::chrono::system_clock::now();
 #endif
@@ -277,8 +267,7 @@ void ConvShuffleGEMM(int8_t *pa, uint8_t *pb, float *pc, size_t m, size_t n, siz
                       QuantizedGemmSelect<kernel_m, kernel_n, kernel_k, layout>(
                           local_pa, local_pb, k, fault_tolerance, result, std::min(valid_m - i_index, kernel_m),
                           std::min(valid_n - j_index, kernel_n), i_index, j_index, ratio_a, ratio_b, min_b, kernel_sum,
-                          bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion, conv_relu_bn_fusion, global_mean,
-                          mul_variance_coeff, scale, shift, is_block);
+                          bias, is_block);
                     }
                   }
                 }
@@ -299,14 +288,12 @@ void ConvShuffleGEMM(int8_t *pa, uint8_t *pb, float *pc, size_t m, size_t n, siz
 #endif
 }
 #endif
-#if defined(LLC_EXCLUSIVE)
+#if defined(LLC_PER_CORE)
 template <size_t kernel_m, size_t kernel_n, size_t kernel_k, LAYOUT layout>
 void ConvShuffleGEMM(int8_t *pa, uint8_t *pb, float *pc, size_t m, size_t n, size_t k, float *ratio_a, float *ratio_b,
                      float *kernel_sum, float *min_b, float *bias, size_t batch_size, size_t groups,
                      size_t channel_per_group, size_t cur_group, size_t height_out, size_t width_out,
-                     float fault_tolerance, size_t pad_m, size_t pad_n, bool conv_relu_fusion, bool conv_bn_fusion,
-                     bool conv_bn_relu_fusion, bool conv_relu_bn_fusion, float *global_mean, float *mul_variance_coeff,
-                     float *scale, float *shift) {
+                     float fault_tolerance, size_t pad_m, size_t pad_n) {
 #ifdef TIME_PROFILE
   auto start = std::chrono::system_clock::now();
 #endif
@@ -356,8 +343,7 @@ void ConvShuffleGEMM(int8_t *pa, uint8_t *pb, float *pc, size_t m, size_t n, siz
                       QuantizedGemmSelect<kernel_m, kernel_n, kernel_k, layout>(
                           local_pa, local_pb, k, fault_tolerance, result, std::min(valid_m - i_index, kernel_m),
                           std::min(valid_n - j_index, kernel_n), i_index, j_index, ratio_a, ratio_b, min_b, kernel_sum,
-                          bias, conv_relu_fusion, conv_bn_fusion, conv_bn_relu_fusion, conv_relu_bn_fusion, global_mean,
-                          mul_variance_coeff, scale, shift, is_block);
+                          bias, is_block);
                     }
                   }
                 }

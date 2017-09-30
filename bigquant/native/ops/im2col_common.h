@@ -36,12 +36,14 @@ INLINE_SPECIFIER void INLINE_ATTRIBUTE FindMinMaxAlongChannel(DType *src, size_t
           DType local_max = -FLT_MAX;
           size_t src_index = b * featuremap_per_image + (s * groups + g) * channels_per_group;
           size_t dst_index = b * h_w + s;
+          /*
           for (size_t c = 0; c < channels_per_group; ++c) {
             local_max = fmaxf(local_max, src[src_index]);
             local_min = fminf(local_min, src[src_index]);
             ++src_index;
           }
-          //  FindMinMaxValue<DType>(src + src_index, channels_per_group, local_min, local_max);
+          */
+          FindMinMaxValue<DType>(src + src_index, channels_per_group, local_min, local_max);
           max[g][dst_index] = local_max;
           min[g][dst_index] = local_min;
         }

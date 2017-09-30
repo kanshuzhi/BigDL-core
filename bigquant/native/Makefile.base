@@ -1,7 +1,7 @@
 CXX := g++-7
 AR := ar
 CXXFLAGS = -Ofast -ftree-vectorize -fomit-frame-pointer -funroll-loops -DGIT_VERSION="\"`git rev-parse HEAD`\"" -Wdelete-incomplete -std=c++11
-LDFLAGS = -flto
+LDFLAGS = -lpthread -flto
 TARGET = HASWELL
 OPENMP = FALSE
 LLC_MODE = EXCLUSIVE
@@ -35,7 +35,7 @@ ifeq ($(LLC_MODE), SHARED)
 endif
 
 ifeq ($(LLC_MODE), EXCLUSIVE)
-	CXXFLAGS += -DLLC_EXCLUSIVE
+	CXXFLAGS += -DLLC_PER_CORE
 endif
 
 ifeq ($(GLIBCPP11_ABI), 0)
