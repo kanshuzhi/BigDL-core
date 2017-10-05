@@ -5,44 +5,63 @@
 #include "./find_extreme.h"
 
 #if defined(AVX512)
-INLINE_SPECIFIER void INLINE_ATTRIBUTE AVX512Kernel8Quantize(uint8_t *dst, float *src, const SIMDPSTYPE &scale,
-                                                             const SIMDPSTYPE &bias) {
+INLINE_SPECIFIER void INLINE_ATTRIBUTE AVX512Kernel8Quantize(uint8_t *dst, float *src, const float &scale,
+                                                             const float &bias) {
+  SIMDPSTYPE vscale = SET1_PS(scale);
+  SIMDPSTYPE vbias = SET1_PS(bias);
   SIMDSITYPE shuffle8mask = SET1_EPI32((12 << 24) + (8 << 16) + (4 << 8) + 0);
   SIMDSITYPE PERMUTE_INDEX = SET_EPI32(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 8, 4, 0);
   SIMDPSTYPE data = _mm512_castps256_ps512(LOADU_PS_HALF(src));  // Load 64B of data
-  SIMDSITYPE int_result = PERMUTEX_EPI32(PERMUTE_INDEX, SHUFFLE_EPI8(PSTOEPI32(FMA_PS(data, scale, bias)),
+  SIMDSITYPE int_result = PERMUTEX_EPI32(PERMUTE_INDEX, SHUFFLE_EPI8(PSTOEPI32(FMA_PS(data, vscale, vbias)),
                                                                      shuffle8mask));  // FMA then convert float to int
   SIMDSITYPEQUARTER result = EXTRACT_SI128(int_result, 0);                            // Get Low 16B
   STORELO_EPI64_QUARTER(reinterpret_cast<SIMDSITYPEQUARTER *>(dst), result);
 }
 
-INLINE_SPECIFIER void INLINE_ATTRIBUTE AVX512Kernel16Quantize(uint8_t *dst, float *src, const SIMDPSTYPE &scale,
-                                                              const SIMDPSTYPE &bias) {
+void AVX512Kernel8StreamQuantize(uint8_t *dst, float *src, const float scale, const float bias,
+                                  const size_t total_num, const size_t dst_stride, const size_t src_stride) {
+  for (size_t k = 0; k < total_num; ++k) {
+    AVX512Kernel8Quantize(dst + k * dst_stride, src + k * src_stride, scale, bias);
+  }
+}
+
+INLINE_SPECIFIER void INLINE_ATTRIBUTE AVX512Kernel16Quantize(uint8_t *dst, float *src, const float &scale,
+                                                              const float &bias) {
+  SIMDPSTYPE vscale = SET1_PS(scale);
+  SIMDPSTYPE vbias = SET1_PS(bias);
   SIMDSITYPE shuffle8mask = SET1_EPI32((12 << 24) + (8 << 16) + (4 << 8) + 0);
   SIMDSITYPE PERMUTE_INDEX = SET_EPI32(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 8, 4, 0);
   SIMDPSTYPE data = LOADU_PS(src);  // Load 64B of data
-  SIMDSITYPE int_result = PERMUTEX_EPI32(PERMUTE_INDEX, SHUFFLE_EPI8(PSTOEPI32(FMA_PS(data, scale, bias)),
+  SIMDSITYPE int_result = PERMUTEX_EPI32(PERMUTE_INDEX, SHUFFLE_EPI8(PSTOEPI32(FMA_PS(data, vscale, vbias)),
                                                                      shuffle8mask));  // FMA then convert float to int
   SIMDSITYPEQUARTER result = EXTRACT_SI128(int_result, 0);                            // Get Low 16B
   STOREU_SI_QUARTER(reinterpret_cast<SIMDSITYPEQUARTER *>(dst), result);              // store
 }
 
-INLINE_SPECIFIER void INLINE_ATTRIBUTE AVX512Kernel64Quantize(uint8_t *dst, float *src, const SIMDPSTYPE &scale,
-                                                              const SIMDPSTYPE &bias) {
-  // TODO(Not fully optimized version but should working)
+void AVX512Kernel16StreamQuantize(uint8_t *dst, float *src, const float scale, const float bias,
+                                  const size_t total_num, const size_t dst_stride, const size_t src_stride) {
+  for (size_t k = 0; k < total_num; ++k) {
+    AVX512Kernel16Quantize(dst + k * dst_stride, src + k * src_stride, scale, bias);
+  }
+}
+
+INLINE_SPECIFIER void INLINE_ATTRIBUTE AVX512Kernel64Quantize(uint8_t *dst, float *src, const float &scale,
+                                                              const float &bias) {
+  SIMDPSTYPE vscale = SET1_PS(scale);
+  SIMDPSTYPE vbias = SET1_PS(bias);
   SIMDSITYPE shuffle8mask = SET1_EPI32((12 << 24) + (8 << 16) + (4 << 8) + 0);
   SIMDSITYPE PERMUTE_INDEX = SET_EPI32(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 8, 4, 0);
   SIMDPSTYPE data1 = LOADU_PS(src);                         // Load 64B of data
   SIMDPSTYPE data2 = LOADU_PS(src + PS_OPERAND_WIDTH);      // Load 64B of data
   SIMDPSTYPE data3 = LOADU_PS(src + 2 * PS_OPERAND_WIDTH);  // Load 64B of data
   SIMDPSTYPE data4 = LOADU_PS(src + 3 * PS_OPERAND_WIDTH);  // Load 64B of data
-  SIMDSITYPE int_result1 = PERMUTEX_EPI32(PERMUTE_INDEX, SHUFFLE_EPI8(PSTOEPI32(FMA_PS(data1, scale, bias)),
+  SIMDSITYPE int_result1 = PERMUTEX_EPI32(PERMUTE_INDEX, SHUFFLE_EPI8(PSTOEPI32(FMA_PS(data1, vscale, vbias)),
                                                                       shuffle8mask));  // FMA then convert float to int
-  SIMDSITYPE int_result2 = PERMUTEX_EPI32(PERMUTE_INDEX, SHUFFLE_EPI8(PSTOEPI32(FMA_PS(data2, scale, bias)),
+  SIMDSITYPE int_result2 = PERMUTEX_EPI32(PERMUTE_INDEX, SHUFFLE_EPI8(PSTOEPI32(FMA_PS(data2, vscale, vbias)),
                                                                       shuffle8mask));  // FMA then convert float to int
-  SIMDSITYPE int_result3 = PERMUTEX_EPI32(PERMUTE_INDEX, SHUFFLE_EPI8(PSTOEPI32(FMA_PS(data3, scale, bias)),
+  SIMDSITYPE int_result3 = PERMUTEX_EPI32(PERMUTE_INDEX, SHUFFLE_EPI8(PSTOEPI32(FMA_PS(data3, vscale, vbias)),
                                                                       shuffle8mask));  // FMA then convert float to int
-  SIMDSITYPE int_result4 = PERMUTEX_EPI32(PERMUTE_INDEX, SHUFFLE_EPI8(PSTOEPI32(FMA_PS(data4, scale, bias)),
+  SIMDSITYPE int_result4 = PERMUTEX_EPI32(PERMUTE_INDEX, SHUFFLE_EPI8(PSTOEPI32(FMA_PS(data4, vscale, vbias)),
                                                                       shuffle8mask));  // FMA then convert float to int
   SIMDSITYPEQUARTER result1 = EXTRACT_SI128(int_result1, 0);                           // Get Low 16B
   SIMDSITYPEQUARTER result2 = EXTRACT_SI128(int_result2, 0);                           // Get Low 16B
@@ -54,45 +73,71 @@ INLINE_SPECIFIER void INLINE_ATTRIBUTE AVX512Kernel64Quantize(uint8_t *dst, floa
   STOREU_SI_QUARTER(reinterpret_cast<SIMDSITYPEQUARTER *>(dst + 3 * PS_OPERAND_WIDTH), result4);  // store
 }
 
+void AVX512Kernel64StreamQuantize(uint8_t *dst, float *src, const float scale, const float bias,
+                                  const size_t total_num, const size_t dst_stride, const size_t src_stride) {
+  for (size_t k = 0; k < total_num; ++k) {
+    AVX512Kernel64Quantize(dst + k * dst_stride, src + k * src_stride, scale, bias);
+  }
+}
+
 #elif defined(__AVX2__)
-INLINE_SPECIFIER void INLINE_ATTRIBUTE AVX2Kernel32Quantize(uint8_t *dst, float *src, const SIMDPSTYPE &scale,
-                                                            const SIMDPSTYPE &bias) {
-  // function should be reentrant
+INLINE_SPECIFIER void INLINE_ATTRIBUTE AVX2Kernel32Quantize(uint8_t *dst, float *src, const float &scale,
+                                                            const float &bias) {
+  SIMDPSTYPE vscale = SET1_PS(scale);
+  SIMDPSTYPE vbias = SET1_PS(bias);
   SIMDSITYPE shuffle8mask = SET_EPI8(-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 12, 8, 4, 0, -1, -1, -1, -1, -1,
                                      -1, -1, -1, -1, -1, -1, -1, 12, 8, 4, 0);
   SIMDSITYPE shuffle32mask = SET_EPI32(0, 0, 0, 0, 0, 0, 4, 0);
   SIMDSITYPE data1 =
-      PERMUTE_EPI32(SHUFFLE_EPI8(PSTOEPI32(FMA_PS(LOADU256_PS(src), scale, bias)), shuffle8mask), shuffle32mask);
+      PERMUTE_EPI32(SHUFFLE_EPI8(PSTOEPI32(FMA_PS(LOADU256_PS(src), vscale, vbias)), shuffle8mask), shuffle32mask);
   SIMDSITYPE data2 =
-      PERMUTE_EPI32(SHUFFLE_EPI8(PSTOEPI32(FMA_PS(LOADU256_PS(src + 8), scale, bias)), shuffle8mask), shuffle32mask);
+      PERMUTE_EPI32(SHUFFLE_EPI8(PSTOEPI32(FMA_PS(LOADU256_PS(src + 8), vscale, vbias)), shuffle8mask), shuffle32mask);
   SIMDSITYPE data3 =
-      PERMUTE_EPI32(SHUFFLE_EPI8(PSTOEPI32(FMA_PS(LOADU256_PS(src + 16), scale, bias)), shuffle8mask), shuffle32mask);
+      PERMUTE_EPI32(SHUFFLE_EPI8(PSTOEPI32(FMA_PS(LOADU256_PS(src + 16), vscale, vbias)), shuffle8mask), shuffle32mask);
   SIMDSITYPE data4 =
-      PERMUTE_EPI32(SHUFFLE_EPI8(PSTOEPI32(FMA_PS(LOADU256_PS(src + 24), scale, bias)), shuffle8mask), shuffle32mask);
+      PERMUTE_EPI32(SHUFFLE_EPI8(PSTOEPI32(FMA_PS(LOADU256_PS(src + 24), vscale, vbias)), shuffle8mask), shuffle32mask);
   SIMDSITYPE data = PERMUTE_SI128(UNPACKLO_EPI64(data1, data2), UNPACKLO_EPI64(data3, data4), 2 << 4);
   STOREU_SI256(reinterpret_cast<SIMDSITYPE *>(dst), data);
 }
 
-INLINE_SPECIFIER void INLINE_ATTRIBUTE AVX2Kernel8Quantize(uint8_t *dst, float *src, const SIMDPSTYPE &scale,
-                                                           const SIMDPSTYPE &bias) {
+void AVX2Kernel32StreamQuantize(uint8_t *dst, float *src, const float scale, const float bias,
+                                  const size_t total_num, const size_t dst_stride, const size_t src_stride) {
+  for (size_t k = 0; k < total_num; ++k) {
+    AVX2Kernel32Quantize(dst + k * dst_stride, src + k * src_stride, scale, bias);
+  }
+}
+
+INLINE_SPECIFIER void INLINE_ATTRIBUTE AVX2Kernel8Quantize(uint8_t *dst, float *src, const float &scale,
+                                                           const float &bias) {
+  SIMDPSTYPE vscale = SET1_PS(scale);
+  SIMDPSTYPE vbias = SET1_PS(bias);
   SIMDSITYPE shuffle8mask = SET_EPI8(-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 12, 8, 4, 0, -1, -1, -1, -1, -1,
                                      -1, -1, -1, -1, -1, -1, -1, 12, 8, 4, 0);
   SIMDSITYPE shuffle32mask = SET_EPI32(0, 0, 0, 0, 0, 0, 4, 0);
   SIMDPSTYPE data = LOADU256_PS(src);                                           // Load 32B of data
-  SIMDSITYPE int_result = PSTOEPI32(FMA_PS(data, scale, bias));                 // FMA then convert float to int
+  SIMDSITYPE int_result = PSTOEPI32(FMA_PS(data, vscale, vbias));                 // FMA then convert float to int
   SIMDSITYPE shuffle_result_per_lane = SHUFFLE_EPI8(int_result, shuffle8mask);  // Get byte 0, 4, 8, 12
   SIMDSITYPE shuffle_result = PERMUTE_EPI32(shuffle_result_per_lane, shuffle32mask);
   SIMDSITYPEHALF result = EXTRACT_SI128(shuffle_result, 0);             // Get Low
   STORELO_EPI64_HALF(reinterpret_cast<SIMDSITYPEHALF *>(dst), result);  // store
 }
+
+void AVX2Kernel8StreamQuantize(uint8_t *dst, float *src, const float scale, const float bias,
+                                  const size_t total_num, const size_t dst_stride, const size_t src_stride) {
+  for (size_t k = 0; k < total_num; ++k) {
+    AVX2Kernel8Quantize(dst + k * dst_stride, src + k * src_stride, scale, bias);
+  }
+}
 #else
-INLINE_SPECIFIER void INLINE_ATTRIBUTE SSE42Kernel8Quantize(uint8_t *dst, float *src, SIMDPSTYPE &scale,
-                                                            SIMDPSTYPE &bias) {
+INLINE_SPECIFIER void INLINE_ATTRIBUTE SSE42Kernel8Quantize(uint8_t *dst, float *src, const float &scale,
+                                                            const float &bias) {
+  SIMDPSTYPE vscale = SET1_PS(scale);
+  SIMDPSTYPE vbias = SET1_PS(bias);
   SIMDSITYPE shuffle8mask = SET_EPI8(-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 12, 8, 4, 0);
   SIMDPSTYPE data1 = LOADU_PS(src);
   SIMDPSTYPE data2 = LOADU_PS(src + 4);
-  SIMDPSTYPE fma_data1 = FMA_PS(data1, scale, bias);
-  SIMDPSTYPE fma_data2 = FMA_PS(data2, scale, bias);
+  SIMDPSTYPE fma_data1 = FMA_PS(data1, vscale, vbias);
+  SIMDPSTYPE fma_data2 = FMA_PS(data2, vscale, vbias);
   SIMDSITYPE int_fma_data1 = PSTOEPI32(fma_data1);
   SIMDSITYPE int_fma_data2 = PSTOEPI32(fma_data2);
   SIMDSITYPE int_fma_data1_shuffle = SHUFFLE_EPI8(int_fma_data1, shuffle8mask);
@@ -101,17 +146,26 @@ INLINE_SPECIFIER void INLINE_ATTRIBUTE SSE42Kernel8Quantize(uint8_t *dst, float 
   STORELO_EPI64(reinterpret_cast<SIMDSITYPE *>(dst), result);
 }
 
-INLINE_SPECIFIER void INLINE_ATTRIBUTE SSE42Kernel16Quantize(uint8_t *dst, float *src, SIMDPSTYPE &scale,
-                                                             SIMDPSTYPE &bias) {
+void SSE42Kernel8StreamQuantize(uint8_t *dst, float *src, const float scale, const float bias,
+                                  const size_t total_num, const size_t dst_stride, const size_t src_stride) {
+  for (size_t k = 0; k < total_num; ++k) {
+    SSE42Kernel8Quantize(dst + k * dst_stride, src + k * src_stride, scale, bias);
+  }
+}
+
+INLINE_SPECIFIER void INLINE_ATTRIBUTE SSE42Kernel16Quantize(uint8_t *dst, float *src, const float &scale,
+                                                             const float &bias) {
+  SIMDPSTYPE vscale = SET1_PS(scale);
+  SIMDPSTYPE vbias = SET1_PS(bias);
   SIMDSITYPE shuffle8mask = SET_EPI8(-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 12, 8, 4, 0);
   SIMDPSTYPE data1 = LOADU_PS(src);
   SIMDPSTYPE data2 = LOADU_PS(src + 4);
   SIMDPSTYPE data3 = LOADU_PS(src + 8);
   SIMDPSTYPE data4 = LOADU_PS(src + 12);
-  SIMDPSTYPE fma_data1 = FMA_PS(data1, scale, bias);
-  SIMDPSTYPE fma_data2 = FMA_PS(data2, scale, bias);
-  SIMDPSTYPE fma_data3 = FMA_PS(data3, scale, bias);
-  SIMDPSTYPE fma_data4 = FMA_PS(data4, scale, bias);
+  SIMDPSTYPE fma_data1 = FMA_PS(data1, vscale, vbias);
+  SIMDPSTYPE fma_data2 = FMA_PS(data2, vscale, vbias);
+  SIMDPSTYPE fma_data3 = FMA_PS(data3, vscale, vbias);
+  SIMDPSTYPE fma_data4 = FMA_PS(data4, vscale, vbias);
   SIMDSITYPE int_fma_data1 = PSTOEPI32(fma_data1);
   SIMDSITYPE int_fma_data2 = PSTOEPI32(fma_data2);
   SIMDSITYPE int_fma_data3 = PSTOEPI32(fma_data3);
@@ -123,6 +177,13 @@ INLINE_SPECIFIER void INLINE_ATTRIBUTE SSE42Kernel16Quantize(uint8_t *dst, float
   SIMDSITYPE result1 = UNPACKLO_EPI32(int_fma_data1_shuffle, int_fma_data2_shuffle);
   SIMDSITYPE result2 = UNPACKLO_EPI32(int_fma_data3_shuffle, int_fma_data4_shuffle);
   STOREU_SI(reinterpret_cast<SIMDSITYPE *>(dst), UNPACKLO_EPI64(result1, result2));
+}
+
+void SSE42Kernel16StreamQuantize(uint8_t *dst, float *src, const float scale, const float bias,
+                                  const size_t total_num, const size_t dst_stride, const size_t src_stride) {
+  for (size_t k = 0; k < total_num; ++k) {
+    SSE42Kernel16Quantize(dst + k * dst_stride, src + k * src_stride, scale, bias);
+  }
 }
 #endif
 
@@ -154,10 +215,9 @@ void PadQuantize<float>(uint8_t *dst, size_t length, size_t pad_length, float *s
                         float &ratio, float threshold) {
   FindMinMaxValue(src, length, min, max);
   ratio = threshold / (max - min);
-  SIMDPSTYPE simd_ratio = SET1_PS(ratio);
-  SIMDPSTYPE simd_bias = SET1_PS(-ratio * min);
+  float bias = -ratio * min;
   for (size_t i = 0; i < length / PS_OPERAND_WIDTH * PS_OPERAND_WIDTH; i += PS_OPERAND_WIDTH) {
-    AVX512Kernel16Quantize(dst + i, src + i, simd_ratio, simd_bias);
+    AVX512Kernel16Quantize(dst + i, src + i, ratio, bias);
   }
   for (size_t i = length / PS_OPERAND_WIDTH * PS_OPERAND_WIDTH; i < length; ++i) {
     dst[i] = static_cast<uint8_t>(std::round((src[i] - min) * ratio));
@@ -170,10 +230,9 @@ void PadQuantize<float>(uint8_t *dst, size_t length, size_t pad_length, float *s
                         float &ratio, float threshold) {
   FindMinMaxValue(src, length, min, max);
   ratio = threshold / (max - min);
-  SIMDPSTYPE simd_ratio = SET1_PS(ratio);
-  SIMDPSTYPE simd_bias = SET1_PS(-ratio * min);
+  float bias = -ratio * min;
   for (size_t i = 0; i < length / PS_OPERAND_WIDTH * PS_OPERAND_WIDTH; i += PS_OPERAND_WIDTH) {
-    AVX2Kernel8Quantize(dst + i, src + i, simd_ratio, simd_bias);
+    AVX2Kernel8Quantize(dst + i, src + i, ratio, bias);
   }
   for (size_t i = length / PS_OPERAND_WIDTH * PS_OPERAND_WIDTH; i < length; ++i) {
     dst[i] = static_cast<uint8_t>(std::round((src[i] - min) * ratio));

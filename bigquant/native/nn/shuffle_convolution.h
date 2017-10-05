@@ -1,7 +1,7 @@
 #ifndef NN_SHUFFLE_CONVOLUTION_H
 #define NN_SHUFFLE_CONVOLUTION_H
 #include "base_convolution.h"
-
+#include "../architecture_adapter.h"
 struct ShuffleConvolutionAlgo : public BaseConvolutionAlgo {
   ShuffleConvolutionAlgo(const ConvolutionKernelDesc &conv_kernel_desc) : internal_layout_(NHWC) {
     weight_threshold_ = 64.0f;
@@ -129,14 +129,14 @@ struct ShuffleConvolutionAlgo : public BaseConvolutionAlgo {
     auto start = std::chrono::system_clock::now();
 #endif
     if (conv_kernel_desc.layout_ == NCHW && layout_transform == false) {
-      shuffle::PadQuantizeShuffleIm2colWrapper<float, NCHW>(
+      MakeArchitectuerAdapter().GetShuffleIm2colFunction(NCHW)(
           srcdata, conv_data_desc.batch_size_, conv_kernel_desc.channel_in_per_group_, conv_kernel_desc.group_,
           conv_data_desc.height_in_, conv_data_desc.width_in_, conv_kernel_desc.kernel_h_, conv_kernel_desc.kernel_w_,
           conv_kernel_desc.pad_h_, conv_kernel_desc.pad_w_, conv_kernel_desc.stride_h_, conv_kernel_desc.stride_w_,
           conv_kernel_desc.dilation_h_, conv_kernel_desc.dilation_w_, quantized_data.data(), min.data(), max.data(),
           ratio.data(), data_workspace_->data_, sw_threshold, layout_transform);
     } else {
-      shuffle::PadQuantizeShuffleIm2colWrapper<float, NHWC>(
+      MakeArchitectuerAdapter().GetShuffleIm2colFunction(NHWC)(
           srcdata, conv_data_desc.batch_size_, conv_kernel_desc.channel_in_per_group_, conv_kernel_desc.group_,
           conv_data_desc.height_in_, conv_data_desc.width_in_, conv_kernel_desc.kernel_h_, conv_kernel_desc.kernel_w_,
           conv_kernel_desc.pad_h_, conv_kernel_desc.pad_w_, conv_kernel_desc.stride_h_, conv_kernel_desc.stride_w_,
@@ -163,7 +163,7 @@ struct ShuffleConvolutionAlgo : public BaseConvolutionAlgo {
 #endif
       float *tempbias = (bias == NULL) ? bias : bias + g * conv_kernel_desc.channel_out_per_group_;
       if (conv_kernel_desc.layout_ == NCHW) {
-        shuffle::ConvShuffleGEMM<CONV_SHUFFLE_KERNEL_M, CONV_SHUFFLE_KERNEL_N, CONV_SHUFFLE_KERNEL_K, NCHW>(
+        MakeArchitectuerAdapter().GetShuffleGemmFunction(true, conv_data_desc.batch_size_, NCHW)(
             quantized_weight_[g]->data_, quantized_data_[g]->data_, out, aligned_gemm_m_, aligned_gemm_n_,
             aligned_gemm_k_, quantized_weight_[g]->ratio_.data_, quantized_data_[g]->ratio_.data_,
             sum_per_channel_out_->data_ + g * conv_kernel_desc.channel_out_per_group_, quantized_data_[g]->min_.data_,
@@ -171,7 +171,7 @@ struct ShuffleConvolutionAlgo : public BaseConvolutionAlgo {
             conv_kernel_desc.channel_out_ / conv_kernel_desc.group_, g, height_out_, width_out_, 0.5,
             aligned_gemm_m_ - gemm_m_, aligned_gemm_n_ - gemm_n_);
       } else {
-        shuffle::ConvShuffleGEMM<CONV_SHUFFLE_KERNEL_M, CONV_SHUFFLE_KERNEL_N, CONV_SHUFFLE_KERNEL_K, NHWC>(
+        MakeArchitectuerAdapter().GetShuffleGemmFunction(true, conv_data_desc.batch_size_, NHWC)(
             quantized_weight_[g]->data_, quantized_data_[g]->data_, out, aligned_gemm_m_, aligned_gemm_n_,
             aligned_gemm_k_, quantized_weight_[g]->ratio_.data_, quantized_data_[g]->ratio_.data_,
             sum_per_channel_out_->data_ + g * conv_kernel_desc.channel_out_per_group_, quantized_data_[g]->min_.data_,
